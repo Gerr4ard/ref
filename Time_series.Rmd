@@ -1,0 +1,167 @@
+---
+title: "Top2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## library
+```{r}
+library(data.table)
+library(dplyr)
+library(GGally)
+library(corrplot)
+library(foreign)
+library(ggplot2)
+library(MASS)
+library(lubridate)
+library(Hmisc)
+library(reshape2)
+library(gridExtra)
+library(DataExplorer)
+library(naniar)
+library(chron)
+library(scales)
+library(dplyr)
+library(lubridate)
+library(lutz)
+library(leaflet)
+library(raster)
+library(magrittr)
+library(tidyquant)
+library(tidyr)
+```
+## Reading data
+```{r}
+top2017<- fread("C:/Users/Ghars/Desktop/New folder/data/top-tracks-of-2017.csv")
+spotify<- fread("C:/Users/Ghars/Desktop/New folder/data/topsongs.csv")
+spotify<- spotify[] %>% rename("Track" = "Track Name")
+mytheme <- theme(plot.title = element_text(size=15,hjust=-.3,face = "bold"), axis.title = element_text(size=12))
+```
+
+
+#### Delays as daily time series
+
+```{r, fig.width=8, fig.height=4}
+airlines_dt = fread('C:/Users/Ghars/Desktop/New folder/data/airlines.csv')
+airports_dt = fread('C:/Users/Ghars/Desktop/New folder/data/airports.csv')
+flights_dt = fread('C:/Users/Ghars/Desktop/New folder/data/flights.csv')
+# load('./data/flights_prep_final_dt.Rdata') # previusly preprocessed data
+
+head(airlines_dt)
+head(airports_dt)
+head(flights_dt)
+
+
+flights_dt= unite(flights_dt, "date", c("DAY", "MONTH", "YEAR"), sep = "/", remove = TRUE)
+flights_dt[,date:= as.Date(date , format="%d/%m/%Y")]
+regular_flights_dt <- flights_dt[CANCELLED==0 & DIVERTED==0]
+
+ts_theme <- theme(axis.text.x= element_text(angle = 90, colour = 'blue') , 
+                  axis.title= element_text(face = 'bold' , size = 10) , 
+                  plot.title = element_text(face='bold',size=12), 
+                  legend.text=element_text(size=5),legend.title = element_text(size=7,face = "bold"))
+
+ts_avg_delay.median_ma<-regular_flights_dt[ARRIVAL_DELAY>=0,.(median_a_delay=mean(ARRIVAL_DELAY,na.rm=T)),by=date] %>%
+  ggplot(aes(date,median_a_delay)) + 
+  geom_line(aes(colour="MA")) + 
+  scale_x_date(date_breaks="1 month",expand=expand_scale(0,0),date_labels="%m-%Y",
+               limits=as.Date(c("2015-01-01","2015-12-31"))) + 
+  ggtitle("Daily Average Arrival Delay Time series for all Airlines") + 
+  labs(x="Date of the flights",y="Daily Average Arrival Delay") + 
+  ts_theme + 
+  geom_ma(ma_fun=WMA,color="red",size = 1.4, linetype=7,show.legend = T) + 
+  scale_colour_manual(name="Moving Average",values= c(MA="black"))
+
+ts_avg_delay.median_ma
+ggsave("./plots/Timeseries.png", width = 10, height = 5)
+```
+
+Time series top 10 Tracks in top regions
+
+```{r}
+
+top10.Region <- c("global","us","br","gb","mx","de","fr","ca","nl","es")
+
+
+top5_tracks<- top2017[1:5,]$name
+spotify[,Date:=as.Date(Date , format="%Y-%m-%d")]
+
+ts<-spotify[Track%in%top5_tracks,.(sum=sum(Streams)),by=.(Date,Track)]%>% as.data.table()
+
+
+ts[] %>% ggplot(aes(x=Date,y=sum,colour=Track,group=Track))+ geom_line(size=1)+theme(legend.position="bottom",axis.text.x=element_text(angle=90,colour='blue'),plot.title=element_text(hjust = 0.5))+scale_x_date(date_breaks="1 month",date_labels="%m-%Y")+ggtitle("Daily number of stream oftop 5 songs 2017")+labs(x="Date",y="Nr of Streams")
+```
+
+
+
+
+
+
+
+
+```{r}
+
+summary(spotify$Streams)
+top<-spotify[,.(median=median(Streams,na.rm=T)),by=.(Region)] %>% as.data.table()
+
+top[order(median,decreasing=T),][1:10] %>% ggplot(aes(Region , median , fill=median)) + geom_bar(stat ="identity")+labs(title = "top average streaming regions", x = "Regions", y = "average streams") + geom_text(aes(label=median), hjust = 0.7, size = 3.3, color = 'red') +
+coord_flip()+ mytheme
+
+
+top10.Region <- c("global","us","br","gb","mx","de","fr","ca","nl","es")
+newspotify <- spotify[Region%in%top10.Region,]
+```
+
+top mean streams Regions ("global" "us"     "gb"     "br"     "mx"     "de"     "es"     "nl"     "au"    "se")
+
+top Median streams regions ("global" "us"     "br"     "gb"     "mx"     "de"     "fr"     "ca"     "nl"  "es")
+
+
+
+Most Streamed Artists in 2017
+```{r}
+
+test<-spotify[,.(total=sum(Streams)),by=c("Artist")] %>% mutate(proportion:=total/sum(spotify$Streams)*100) %>% as.data.table()
+
+test[order(proportion,decreasing=T),][1:10]
+test[order(proportion,decreasing=T),][1:10] %>% ggplot(aes(x =2, y = proportion, fill = Artist))+
+  geom_bar(stat = "identity", color = "white")+
+  coord_polar(theta = "y", start = 0)+scale_fill_brewer(palette = "Spectral")+
+  geom_text(aes(label=paste(round(proportion,1),"%")),position=position_stack(vjust=0.5),color="white")+
+  labs(title="Most Streamed Artists in 2017")+
+  theme_void()
+```
+
+
+Most Streamed Tracks in 2017
+```{r}
+test1<-spotify[,.(stream=sum(Streams)),by=c("Track")]
+
+test1[order(stream,decreasing=T),][1:10]%>% ggplot(aes(Track,stream,fill=stream,)) + geom_bar(stat ="identity")+labs(title = "Most Streamed Tracks in 2017", x = "Track name", y = "Nr of streams") + geom_text(aes(label=stream), hjust = 1, size = 3.3, color = 'red') +
+coord_flip()+ mytheme
+```
+
+
+top 3 , 5 , 10 , 20 Position count (420 song were always in the top 3)
+```{r}
+test2<-spotify[Position<3,.N,by=Track]
+test2[order(N,decreasing=T),][1:10] %>% ggplot(aes(Track,N ,fill=N )) + geom_bar(stat ="identity")+labs(title = "First top 3 tracks", x = "Track name", y = "count on top 3") + geom_text(aes(label=N), hjust = 1, size = 3.3, color = 'red') +
+coord_flip()+ mytheme
+
+test3<-spotify[Position<5,.N,by=Track]
+test3[order(N,decreasing=T),][1:10] %>% ggplot(aes(Track,N ,fill=N )) + geom_bar(stat ="identity")+labs(title = "First 10 top 5 tracks", x = "Track name", y = "count on top 5") + geom_text(aes(label=N), hjust = 1, size = 3.3, color = 'red') +
+coord_flip()+ mytheme
+
+test4<-spotify[Position<10,.N,by=Track]
+test4[order(N,decreasing=T),][1:10] %>% ggplot(aes(Track,N ,fill=N )) + geom_bar(stat ="identity")+labs(title = "First 10 top 10 tracks", x = "Track name", y = "count on top 10") + geom_text(aes(label=N), hjust = 1, size = 3.3, color = 'red') +
+coord_flip()+ mytheme
+
+test5<-spotify[Position<20,.N,by=Track]
+test5[order(N,decreasing=T),][1:10] %>% ggplot(aes(Track,N ,fill=N )) + geom_bar(stat ="identity")+
+  labs(title = "First 10 top 20 tracks", x = "Track name", y = "count on top 20") + geom_text(aes(label=N), hjust = 1, size = 3.3, color = 'red')+
+  scale_x_discrete(labels=function(x)stringi::stri_wrap(x,width=20))+coord_flip()+ mytheme
+
+```
