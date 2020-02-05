@@ -1,0 +1,119 @@
+---
+title: "Top2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## library
+
+```{r}
+library(data.table)
+library(broom)
+library(dplyr)
+library(GGally)
+library(corrplot)
+library(foreign)
+library(ggplot2)
+library(MASS)
+library(Hmisc)
+library(reshape2)
+```
+## Reading data
+```{r}
+
+top2017 <- fread("./data/top-tracks-of-2017.csv")
+
+top2017<- top2017[,rank:=1:nrow(top2017)]
+sum(is.na(top2017))
+head(top2017)
+```
+
+adjusted R backward elimination (prediction accuracy)
+```{r}
+#rbackward <- step(m1, direction = "backward")
+```
+
+Prediction function
+```{r}
+
+audio_predict <- function(y){
+  library(data.table)
+  library(broom)
+  top2017 <- fread("./data/top-tracks-of-2017.csv")
+  top2017<- top2017[,rank:=1:nrow(top2017)]
+  audio_variable <- colnames(top2017[,4:16])
+  candidates<- paste(setdiff(audio_variable,y))
+  model<-as.formula(paste(y,"~",paste(candidates,collapse ="+")))
+  fmodel <- lm(model , data = top2017)
+  
+  while (TRUE) {
+    c <-summary(fmodel)$coefficients[,4]
+    if (all(c < 0.05)){
+      break
+    }
+    n <- names(which.max(c[-1]))
+    print(n)
+    candidates<- paste(setdiff(candidates,n))
+    if(length(candidates)==0){
+      
+      return(paste0("all feautures dont fit the lm model"))
+    }
+    nmodel<-as.formula(paste(y,"~",paste(candidates,collapse="+")))
+    fmodel <- lm(nmodel , data = top2017)
+  }
+  
+  #check lm assumption of fitted model
+  plot(fmodel, which = 1) # Linearity assumption
+  plot(fmodel, which = 2) ## Normality assumption
+  plot(fmodel, which = 3) ## Constant variability
+  plot(residuals(fmodel)) ## Independence
+  summary(fmodel)
+  
+}
+
+
+audio_predict("valence") # enter audio feature as character
+
+
+```
+
+
+
+
+(statistically significant predictors)
+remove the largest p-value
+```{r}
+#summary(m1)
+#pv1 <- update(m1, . ~ . - liveness)
+#summary(pv1)
+#pv1 <- update(pv1, . ~ . - speechiness)
+#summary(pv1)
+#pv1 <- update(pv1, . ~ . - key)
+#summary(pv1)
+#pv1 <- update(pv1, . ~ . - instrumentalness)
+#summary(pv1)
+#pv1 <- update(pv1, . ~ . - mode)
+#summary(pv1)
+#pv1 <- update(pv1, . ~ . - duration_ms)
+#summary(pv1)
+#pv1 <- update(pv1, . ~ . - tempo)
+#summary(pv1)
+#pv1 <- update(pv1, . ~ . - time_signature)
+#summary(pv1)
+
+```
+
+adjusted R forward elimination
+```{r}
+rforward <- step(lm(valence ~ 1, data = top2017),
+                 scope = ~ danceability + energy + key + loudness + 
+                   mode + speechiness + acousticness + instrumentalness + 
+                   liveness + tempo + duration_ms + time_signature,
+                 direction = "forward")
+
+#summary(rforward)
+```
+
